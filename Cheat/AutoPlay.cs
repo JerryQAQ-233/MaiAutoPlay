@@ -89,21 +89,14 @@ namespace SinmaiAssist.Cheat
                 case AutoPlayMode.Critical:
                     __result = NoteJudge.ETiming.Critical;
                     break;
-                // 随机Fast或Late
                 case AutoPlayMode.Perfect:
-                    __result = UnityEngine.Random.Range(0, 2) == 0 
-                        ? NoteJudge.ETiming.LatePerfect2nd 
-                        : NoteJudge.ETiming.FastPerfect2nd;
+                    __result = NoteJudge.ETiming.LatePerfect2nd;
                     break;
                 case AutoPlayMode.Great:
-                    __result = UnityEngine.Random.Range(0, 2) == 0 
-                        ? NoteJudge.ETiming.LateGreat 
-                        : NoteJudge.ETiming.FastGreat;
+                    __result = NoteJudge.ETiming.LateGreat;
                     break;
                 case AutoPlayMode.Good:
-                    __result = UnityEngine.Random.Range(0, 2) == 0 
-                        ? NoteJudge.ETiming.LateGood 
-                        : NoteJudge.ETiming.FastGood;
+                    __result = NoteJudge.ETiming.LateGood;
                     break;
                 case AutoPlayMode.Random:
                     __result = RandomJudgeTiming[UnityEngine.Random.Range(0, RandomJudgeTiming.Count)];
@@ -169,11 +162,13 @@ namespace SinmaiAssist.Cheat
             if (!IsAutoPlay()) return true;
             var appearMsec = (float)AccessTools.Field(typeof(NoteBase), "AppearMsec").GetValue(__instance);
             var isExNote = (bool)AccessTools.Field(typeof(NoteBase), "IsExNote").GetValue(__instance);
+            var judgeType = (NoteJudge.EJudgeType)AccessTools.Field(typeof(NoteBase), "JudgeType").GetValue(__instance);
+            var isBreakNote = judgeType == NoteJudge.EJudgeType.Break;
             var playJudgeSeMethod = AccessTools.Method(typeof(NoteBase), "PlayJudgeSe");
 
             if (NotesManager.GetCurrentMsec() > appearMsec - 4.1666665f && IsAutoPlay())
             {
-                if ((autoPlayMode == AutoPlayMode.RandomAllPerfect || autoPlayMode == AutoPlayMode.RandomFullCombo || autoPlayMode == AutoPlayMode.RandomFullComboPlus) && isExNote)
+                if ((autoPlayMode == AutoPlayMode.RandomAllPerfect || autoPlayMode == AutoPlayMode.RandomFullCombo || autoPlayMode == AutoPlayMode.RandomFullComboPlus) && (isExNote || isBreakNote))
                 {
                     AccessTools.Field(typeof(NoteBase), "JudgeResult").SetValue(__instance, NoteJudge.ETiming.Critical);
                 }
