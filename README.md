@@ -1,7 +1,7 @@
 # MaiAuto
 Mods for maimai DX (Sinmai.exe). Patch with MelonLoader.  
 
-This is a cheat() Mod, using by your own risk.
+This is a cheat Mod, using by your own risk.
 
 > [!WARNING] 
 > Please use MelonLoader version 0.6.4 or lower. 
