@@ -50,6 +50,7 @@ namespace SinmaiAssist.Cheat
 
         public static AutoPlayMode autoPlayMode = AutoPlayMode.None;
         public static bool DisableUpdate = false;
+        [ThreadStatic]
         public static bool isSlideJudging = false;
 
         public static bool IsAutoPlay()
