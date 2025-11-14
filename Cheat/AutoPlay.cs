@@ -57,49 +57,6 @@ namespace SinmaiAssist.Cheat
         }
 
         // Slide 的 NoteCheck 调用期间禁用 autoplay 的计数器（支持嵌套/多次进入）
-        private static int ManualSlideOverrideDepth = 0;
-
-        [HarmonyPrefix]
-        [HarmonyPatch(typeof(GameManager), "IsAutoPlay")]
-        public static bool SetIsAutoPlay(ref bool __result)
-        {
-            // 在 Slide 的 NoteCheck 期间，视为未开启 autoplay；其他情况维持你的原逻辑
-            __result = ManualSlideOverrideDepth > 0 ? false : IsAutoPlay();
-            return false;
-        }
-
-        // 进入 SlideRoot 的 NoteCheck 前，开启临时关闭 autoplay
-        [HarmonyPrefix]
-        [HarmonyPatch(typeof(SlideRoot), "NoteCheck")]
-        public static void SlideRootNoteCheck_OverrideBegin()
-        {
-            ManualSlideOverrideDepth++;
-        }
-
-        // 退出 SlideRoot 的 NoteCheck 后，恢复 autoplay
-        [HarmonyPostfix]
-        [HarmonyPatch(typeof(SlideRoot), "NoteCheck")]
-        public static void SlideRootNoteCheck_OverrideEnd()
-        {
-            ManualSlideOverrideDepth--;
-            if (ManualSlideOverrideDepth < 0) ManualSlideOverrideDepth = 0;
-        }
-
-        // 若谱面使用了 SlideFan（风车等变体），同样在其 NoteCheck 期间关闭 autoplay
-        [HarmonyPrefix]
-        [HarmonyPatch(typeof(SlideFan), "NoteCheck")]
-        public static void SlideFanNoteCheck_OverrideBegin()
-        {
-            ManualSlideOverrideDepth++;
-        }
-
-        [HarmonyPostfix]
-        [HarmonyPatch(typeof(SlideFan), "NoteCheck")]
-        public static void SlideFanNoteCheck_OverrideEnd()
-        {
-            ManualSlideOverrideDepth--;
-            if (ManualSlideOverrideDepth < 0) ManualSlideOverrideDepth = 0;
-        }
 
         [HarmonyPostfix]
         [HarmonyPatch(typeof(GameManager), "set_AutoPlay")]
@@ -230,37 +187,9 @@ namespace SinmaiAssist.Cheat
                 __result = false;
                 return false;
             }
-
-            var judgeTimingDiffMsecField = AccessTools.Field(typeof(SlideRoot), "JudgeTimingDiffMsec");
             var judgeResultField = AccessTools.Field(typeof(SlideRoot), "JudgeResult");
-            var tailMsecField = AccessTools.Field(typeof(SlideRoot), "TailMsec");
-            var lastWaitTimeField = AccessTools.Field(typeof(SlideRoot), "lastWaitTime");
-            var judgeTypeField = AccessTools.Field(typeof(SlideRoot), "JudgeType");
-            var lastWaitTimeForJudgeField = AccessTools.Field(typeof(SlideRoot), "lastWaitTimeForJudge");
-
-            float judgeTimingDiffMsec = NotesManager.GetCurrentMsec() - (float)tailMsecField.GetValue(__instance) + (float)lastWaitTimeField.GetValue(__instance);
-            judgeTimingDiffMsecField.SetValue(__instance, judgeTimingDiffMsec);
-            ETiming judgeResult = (ETiming)judgeResultField.GetValue(__instance);
-            judgeResult = (IsAutoPlay() ? GameManager.AutoJudge() : NoteJudge.GetSlideJudgeTiming(ref judgeTimingDiffMsec, Singleton<GamePlayManager>.Instance.GetGameScore(__instance.MonitorId).UserOption.GetJudgeTimingFrame(), (EJudgeType)judgeTypeField.GetValue(__instance), (int)lastWaitTimeForJudgeField.GetValue(__instance)));
-
-            if (autoPlayMode == AutoPlayMode.RandomAllPerfect ||
-                autoPlayMode == AutoPlayMode.RandomFullComboPlus ||
-                autoPlayMode == AutoPlayMode.RandomFullCombo)
-            {
-                judgeResult = NoteJudge.ETiming.Critical;
-            }
-
-            if (judgeResult != NoteJudge.ETiming.End)
-            {
-                if (judgeResult == NoteJudge.ETiming.TooFast)
-                {
-                    judgeResult = NoteJudge.ETiming.FastGood;
-                }
-                judgeResultField.SetValue(__instance, judgeResult);
-                __result = true;
-                return false;
-            }
-            __result = false;
+            judgeResultField.SetValue(__instance, NoteJudge.ETiming.TooLate);
+            __result = true;
             return false;
         }
 
@@ -329,29 +258,5 @@ namespace SinmaiAssist.Cheat
             return false;
         }
 
-        [HarmonyPrefix]
-        [HarmonyPatch(typeof(SlideRoot), "NoteCheck")]
-        public static bool SlideRootNoteCheckNoSlide(SlideRoot __instance)
-        {
-            // 非 autoplay：走原始逻辑
-            if (!IsAutoPlay()) return true;
-
-            // 到达判定窗口才处理
-            var isStartIgnoreWaitMethod = AccessTools.Method(typeof(SlideRoot), "IsNoteCheckTimeStartIgnoreJudgeWait");
-            bool canCheck = (bool)isStartIgnoreWaitMethod.Invoke(__instance, null);
-            if (!canCheck) return true;
-
-            // 将滑动命中索引直接标记为完成，跳过“推进/箭头消隐/滑动SE”
-            var hitAreaListField = AccessTools.Field(typeof(SlideRoot), "_hitAreaList");
-            var hitIndexField = AccessTools.Field(typeof(SlideRoot), "_hitIndex");
-            var hitAreaList = hitAreaListField.GetValue(__instance) as System.Collections.IList;
-            if (hitAreaList != null)
-            {
-                hitIndexField.SetValue(__instance, hitAreaList.Count);
-            }
-
-            // 继续执行原方法：它会立即调用 Judge()
-            return true;
-        }
     }
 }
