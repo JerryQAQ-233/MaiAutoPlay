@@ -172,6 +172,10 @@ namespace SinmaiAssist.Cheat
         [HarmonyPatch(typeof(NoteBase), "SetAutoPlayJudge")]
         public static bool NoteBaseAutoPlayJudge(NoteBase __instance)
         {
+            if (__instance is SlideRoot)
+            {
+                return true;
+            }
             if (!IsAutoPlay()) return true;
             var appearMsec = (float)AccessTools.Field(typeof(NoteBase), "AppearMsec").GetValue(__instance);
             var isExNote = (bool)AccessTools.Field(typeof(NoteBase), "IsExNote").GetValue(__instance);
