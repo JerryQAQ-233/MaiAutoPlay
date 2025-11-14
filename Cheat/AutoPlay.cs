@@ -50,6 +50,8 @@ namespace SinmaiAssist.Cheat
 
         public static AutoPlayMode autoPlayMode = AutoPlayMode.None;
         public static bool DisableUpdate = false;
+        public static bool isSlideJudging = false;
+        public static bool isTouchJudging = false;
 
         public static bool IsAutoPlay()
         {
@@ -60,6 +62,11 @@ namespace SinmaiAssist.Cheat
         [HarmonyPatch(typeof(GameManager), "IsAutoPlay")]
         public static bool SetIsAutoPlay(ref bool __result)
         {
+            if (isSlideJudging || isTouchJudging)
+            {
+                __result = false;
+                return false;
+            }
             __result = IsAutoPlay();
             return false;
         }
@@ -166,11 +173,8 @@ namespace SinmaiAssist.Cheat
         [HarmonyPatch(typeof(NoteBase), "SetAutoPlayJudge")]
         public static bool NoteBaseAutoPlayJudge(NoteBase __instance)
         {
-            if (__instance is SlideRoot)
-            {
-                return false;
-            }
-            var appearMsec = (float)AccessTools.Field(typeof(SlideRoot), "AppearMsec").GetValue(__instance);
+            if (!IsAutoPlay()) return true;
+            var appearMsec = (float)AccessTools.Field(typeof(NoteBase), "AppearMsec").GetValue(__instance);
             var isExNote = (bool)AccessTools.Field(typeof(NoteBase), "IsExNote").GetValue(__instance);
             var playJudgeSeMethod = AccessTools.Method(typeof(NoteBase), "PlayJudgeSe");
 
@@ -191,124 +195,68 @@ namespace SinmaiAssist.Cheat
 
         [HarmonyPrefix]
         [HarmonyPatch(typeof(SlideRoot), "Judge")]
-        public static bool SlideRootJudge(SlideRoot __instance, ref bool __result)
+        public static bool SlideRootJudge_Prefix()
         {
-            if (!IsAutoPlay())
+            if (IsAutoPlay())
             {
-                return true;
+                isSlideJudging = true;
             }
+            return true;
+        }
 
-            var isNoteCheckTimeStartMethod = AccessTools.Method(typeof(SlideRoot), "IsNoteCheckTimeStart");
-            bool isNoteCheckTimeStart = (bool)isNoteCheckTimeStartMethod.Invoke(__instance, new object[] { Singleton<GamePlayManager>.Instance.GetGameScore(__instance.MonitorId).UserOption.GetJudgeTimingFrame() });
-            if (!isNoteCheckTimeStart)
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(SlideRoot), "Judge")]
+        public static void SlideRootJudge_Postfix(SlideRoot __instance, bool __result)
+        {
+            if (isSlideJudging)
             {
-                __result = false;
-                return false;
-            }
-
-            var judgeTimingDiffMsecField = AccessTools.Field(typeof(SlideRoot), "JudgeTimingDiffMsec");
-            var judgeResultField = AccessTools.Field(typeof(SlideRoot), "JudgeResult");
-            var tailMsecField = AccessTools.Field(typeof(SlideRoot), "TailMsec");
-            var lastWaitTimeField = AccessTools.Field(typeof(SlideRoot), "lastWaitTime");
-            var judgeTypeField = AccessTools.Field(typeof(SlideRoot), "JudgeType");
-            var lastWaitTimeForJudgeField = AccessTools.Field(typeof(SlideRoot), "lastWaitTimeForJudge");
-            var appearMsec = (float)AccessTools.Field(typeof(SlideRoot), "AppearMsec").GetValue(__instance);
-
-            float judgeTimingDiffMsec = NotesManager.GetCurrentMsec() - (float)tailMsecField.GetValue(__instance) + (float)lastWaitTimeField.GetValue(__instance);
-            judgeTimingDiffMsecField.SetValue(__instance, judgeTimingDiffMsec);
-
-            // Run the manual judge logic to process input and see if a judgment would have occurred
-            ETiming manualResult = NoteJudge.GetSlideJudgeTiming(ref judgeTimingDiffMsec, Singleton<GamePlayManager>.Instance.GetGameScore(__instance.MonitorId).UserOption.GetJudgeTimingFrame(), (EJudgeType)judgeTypeField.GetValue(__instance), (int)lastWaitTimeForJudgeField.GetValue(__instance));
-            
-            // Also check for timeout, in case there's no manual input
-            bool isTimeout = NotesManager.GetCurrentMsec() > appearMsec - 4.1666665f;
-
-            // If a judgment happened (either manually triggered or timed out)
-            if (manualResult != ETiming.End || isTimeout)
-            {
-                // Determine the autoplay result
-                ETiming autoResult = GameManager.AutoJudge();
-                if (autoPlayMode == AutoPlayMode.RandomAllPerfect ||
-                    autoPlayMode == AutoPlayMode.RandomFullComboPlus ||
-                    autoPlayMode == AutoPlayMode.RandomFullCombo)
+                isSlideJudging = false;
+                if (__result)
                 {
-                    autoResult = NoteJudge.ETiming.Critical;
+                    var judgeResultField = AccessTools.Field(typeof(SlideRoot), "JudgeResult");
+                    ETiming autoResult = GameManager.AutoJudge();
+                    if (autoPlayMode == AutoPlayMode.RandomAllPerfect ||
+                        autoPlayMode == AutoPlayMode.RandomFullComboPlus ||
+                        autoPlayMode == AutoPlayMode.RandomFullCombo)
+                    {
+                        autoResult = NoteJudge.ETiming.Critical;
+                    }
+                    judgeResultField.SetValue(__instance, autoResult);
                 }
-                
-                // Set the result to the autoplay result, ignoring the manual one
-                judgeResultField.SetValue(__instance, autoResult);
-                __result = true; // A judgment was made
-                return false; // Skip original method
             }
-
-            // No judgment happened yet, let the slide continue
-            __result = false;
-            return false; // Skip original method
         }
 
         [HarmonyPrefix]
         [HarmonyPatch(typeof(TouchNoteB), "Judge")]
-        public static bool TouchNoteBJudge(TouchNoteB __instance, ref bool __result)
+        public static bool TouchNoteBJudge_Prefix()
         {
-            if (!IsAutoPlay()) return true;
-            var isNoteCheckTimeStartMethod = AccessTools.Method(typeof(NoteBase), "IsNoteCheckTimeStart");
-            bool isNoteCheckTimeStart = (bool)isNoteCheckTimeStartMethod.Invoke(__instance, new object[] { Singleton<GamePlayManager>.Instance.GetGameScore(__instance.MonitorId).UserOption.GetJudgeTimingFrame() });
-            if (isNoteCheckTimeStart)
+            if (IsAutoPlay())
             {
-                __result = false;
-                return false;
+                isTouchJudging = true;
             }
-            var judgeTimingDiffMsecField = AccessTools.Field(typeof(NoteBase), "JudgeTimingDiffMsec");
-            var judgeResultField = AccessTools.Field(typeof(NoteBase), "JudgeResult");
-            var appearMsecField = AccessTools.Field(typeof(NoteBase), "AppearMsec");
-            var judgeTypeField = AccessTools.Field(typeof(NoteBase), "JudgeType");
-            var buttonIdField = AccessTools.Field(typeof(NoteBase), "ButtonId");
-            var TouchAreaField = AccessTools.Field(typeof(TouchNoteB), "TouchArea");
-            var playJudgeSeMethod = AccessTools.Method(typeof(TouchNoteB), "PlayJudgeSe");
+            return true;
+        }
 
-            var judgeTimingDiffMsec = NotesManager.GetCurrentMsec() - (float)appearMsecField.GetValue(__instance);
-            judgeTimingDiffMsecField.SetValue(__instance, judgeTimingDiffMsec);
-
-            ETiming judgeResult = (ETiming)judgeResultField.GetValue(__instance);
-            judgeResult = NoteJudge.GetJudgeTiming(ref judgeTimingDiffMsec, Singleton<GamePlayManager>.Instance.GetGameScore(__instance.MonitorId).UserOption.GetJudgeTimingFrame(), (EJudgeType)judgeTypeField.GetValue(__instance));
-            if (autoPlayMode == AutoPlayMode.RandomAllPerfect ||
-                autoPlayMode == AutoPlayMode.RandomFullComboPlus ||
-                autoPlayMode == AutoPlayMode.RandomFullCombo)
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(TouchNoteB), "Judge")]
+        public static void TouchNoteBJudge_Postfix(TouchNoteB __instance, bool __result)
+        {
+            if (isTouchJudging)
             {
-                judgeResult = NoteJudge.ETiming.Critical;
+                isTouchJudging = false;
+                if (__result)
+                {
+                    var judgeResultField = AccessTools.Field(typeof(NoteBase), "JudgeResult");
+                    ETiming autoResult = GameManager.AutoJudge();
+                    if (autoPlayMode == AutoPlayMode.RandomAllPerfect ||
+                        autoPlayMode == AutoPlayMode.RandomFullComboPlus ||
+                        autoPlayMode == AutoPlayMode.RandomFullCombo)
+                    {
+                        autoResult = NoteJudge.ETiming.Critical;
+                    }
+                    judgeResultField.SetValue(__instance, autoResult);
+                }
             }
-            judgeResultField.SetValue(__instance, judgeResult);
-
-            TouchSensorType touchArea = (TouchSensorType)TouchAreaField.GetValue(__instance);
-            if (judgeResult != NoteJudge.ETiming.End)
-            {
-                playJudgeSeMethod.Invoke(__instance, null);
-                int buttonId = (int)buttonIdField.GetValue(__instance);
-                if (touchArea == TouchSensorType.B)
-                {
-                    InputManager.SetUsedThisFrame(__instance.MonitorId, (InputManager.TouchPanelArea)(8 + buttonId));
-                }
-                else if (touchArea == TouchSensorType.E)
-                {
-                    InputManager.SetUsedThisFrame(__instance.MonitorId, (InputManager.TouchPanelArea)(26 + buttonId));
-                }
-                else if (touchArea == TouchSensorType.A)
-                {
-                    InputManager.SetUsedThisFrame(__instance.MonitorId, (InputManager.TouchPanelArea)(0 + buttonId));
-                }
-                else if (touchArea == TouchSensorType.D)
-                {
-                    InputManager.SetUsedThisFrame(__instance.MonitorId, (InputManager.TouchPanelArea)(18 + buttonId));
-                }
-                else if (touchArea == TouchSensorType.C)
-                {
-                    InputManager.SetUsedThisFrame(__instance.MonitorId, InputManager.TouchPanelArea.C1);
-                    InputManager.SetUsedThisFrame(__instance.MonitorId, InputManager.TouchPanelArea.C2);
-                }
-                __result = true;
-                return false;
-            }
-            return false;
         }
 
         [HarmonyPostfix]
