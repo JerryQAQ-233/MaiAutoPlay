@@ -168,10 +168,9 @@ namespace SinmaiAssist.Cheat
         {
             if (__instance is SlideRoot)
             {
-                return true;
+                return false;
             }
-            if (!IsAutoPlay()) return true;
-            var appearMsec = (float)AccessTools.Field(typeof(NoteBase), "AppearMsec").GetValue(__instance);
+            var appearMsec = (float)AccessTools.Field(typeof(SlideRoot), "AppearMsec").GetValue(__instance);
             var isExNote = (bool)AccessTools.Field(typeof(NoteBase), "IsExNote").GetValue(__instance);
             var playJudgeSeMethod = AccessTools.Method(typeof(NoteBase), "PlayJudgeSe");
 
@@ -213,7 +212,7 @@ namespace SinmaiAssist.Cheat
             var lastWaitTimeField = AccessTools.Field(typeof(SlideRoot), "lastWaitTime");
             var judgeTypeField = AccessTools.Field(typeof(SlideRoot), "JudgeType");
             var lastWaitTimeForJudgeField = AccessTools.Field(typeof(SlideRoot), "lastWaitTimeForJudge");
-            var appearMsec = (float)AccessTools.Field(typeof(NoteBase), "AppearMsec").GetValue(__instance);
+            var appearMsec = (float)AccessTools.Field(typeof(SlideRoot), "AppearMsec").GetValue(__instance);
 
             float judgeTimingDiffMsec = NotesManager.GetCurrentMsec() - (float)tailMsecField.GetValue(__instance) + (float)lastWaitTimeField.GetValue(__instance);
             judgeTimingDiffMsecField.SetValue(__instance, judgeTimingDiffMsec);
