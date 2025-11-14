@@ -50,8 +50,6 @@ namespace SinmaiAssist.Cheat
 
         public static AutoPlayMode autoPlayMode = AutoPlayMode.None;
         public static bool DisableUpdate = false;
-        [ThreadStatic]
-        public static bool isSlideJudging = false;
 
         public static bool IsAutoPlay()
         {
@@ -62,11 +60,6 @@ namespace SinmaiAssist.Cheat
         [HarmonyPatch(typeof(GameManager), "IsAutoPlay")]
         public static bool SetIsAutoPlay(ref bool __result)
         {
-            if (isSlideJudging)
-            {
-                __result = false;
-                return false;
-            }
             __result = IsAutoPlay();
             return false;
         }
@@ -199,35 +192,59 @@ namespace SinmaiAssist.Cheat
 
         [HarmonyPrefix]
         [HarmonyPatch(typeof(SlideRoot), "Judge")]
-        public static bool SlideRootJudge_Prefix()
+        public static bool SlideRootJudge(SlideRoot __instance, ref bool __result)
         {
-            if (IsAutoPlay())
+            if (!IsAutoPlay())
             {
-                isSlideJudging = true;
+                return true;
             }
-            return true;
-        }
 
-        [HarmonyPostfix]
-        [HarmonyPatch(typeof(SlideRoot), "Judge")]
-        public static void SlideRootJudge_Postfix(SlideRoot __instance, bool __result)
-        {
-            if (isSlideJudging)
+            var isNoteCheckTimeStartMethod = AccessTools.Method(typeof(SlideRoot), "IsNoteCheckTimeStart");
+            bool isNoteCheckTimeStart = (bool)isNoteCheckTimeStartMethod.Invoke(__instance, new object[] { Singleton<GamePlayManager>.Instance.GetGameScore(__instance.MonitorId).UserOption.GetJudgeTimingFrame() });
+            if (!isNoteCheckTimeStart)
             {
-                isSlideJudging = false;
-                if (__result)
-                {
-                    var judgeResultField = AccessTools.Field(typeof(SlideRoot), "JudgeResult");
-                    ETiming autoResult = GameManager.AutoJudge();
-                    if (autoPlayMode == AutoPlayMode.RandomAllPerfect ||
-                        autoPlayMode == AutoPlayMode.RandomFullComboPlus ||
-                        autoPlayMode == AutoPlayMode.RandomFullCombo)
-                    {
-                        autoResult = NoteJudge.ETiming.Critical;
-                    }
-                    judgeResultField.SetValue(__instance, autoResult);
-                }
+                __result = false;
+                return false;
             }
+
+            var judgeTimingDiffMsecField = AccessTools.Field(typeof(SlideRoot), "JudgeTimingDiffMsec");
+            var judgeResultField = AccessTools.Field(typeof(SlideRoot), "JudgeResult");
+            var tailMsecField = AccessTools.Field(typeof(SlideRoot), "TailMsec");
+            var lastWaitTimeField = AccessTools.Field(typeof(SlideRoot), "lastWaitTime");
+            var judgeTypeField = AccessTools.Field(typeof(SlideRoot), "JudgeType");
+            var lastWaitTimeForJudgeField = AccessTools.Field(typeof(SlideRoot), "lastWaitTimeForJudge");
+            var appearMsec = (float)AccessTools.Field(typeof(NoteBase), "AppearMsec").GetValue(__instance);
+
+            float judgeTimingDiffMsec = NotesManager.GetCurrentMsec() - (float)tailMsecField.GetValue(__instance) + (float)lastWaitTimeField.GetValue(__instance);
+            judgeTimingDiffMsecField.SetValue(__instance, judgeTimingDiffMsec);
+
+            // Run the manual judge logic to process input and see if a judgment would have occurred
+            ETiming manualResult = NoteJudge.GetSlideJudgeTiming(ref judgeTimingDiffMsec, Singleton<GamePlayManager>.Instance.GetGameScore(__instance.MonitorId).UserOption.GetJudgeTimingFrame(), (EJudgeType)judgeTypeField.GetValue(__instance), (int)lastWaitTimeForJudgeField.GetValue(__instance));
+            
+            // Also check for timeout, in case there's no manual input
+            bool isTimeout = NotesManager.GetCurrentMsec() > appearMsec - 4.1666665f;
+
+            // If a judgment happened (either manually triggered or timed out)
+            if (manualResult != ETiming.End || isTimeout)
+            {
+                // Determine the autoplay result
+                ETiming autoResult = GameManager.AutoJudge();
+                if (autoPlayMode == AutoPlayMode.RandomAllPerfect ||
+                    autoPlayMode == AutoPlayMode.RandomFullComboPlus ||
+                    autoPlayMode == AutoPlayMode.RandomFullCombo)
+                {
+                    autoResult = NoteJudge.ETiming.Critical;
+                }
+                
+                // Set the result to the autoplay result, ignoring the manual one
+                judgeResultField.SetValue(__instance, autoResult);
+                __result = true; // A judgment was made
+                return false; // Skip original method
+            }
+
+            // No judgment happened yet, let the slide continue
+            __result = false;
+            return false; // Skip original method
         }
 
         [HarmonyPrefix]
