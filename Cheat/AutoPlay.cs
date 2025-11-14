@@ -56,16 +56,49 @@ namespace SinmaiAssist.Cheat
             return autoPlayMode != AutoPlayMode.None;
         }
 
-        // 在 Slide 的 NoteCheck 期间禁用 autoplay 的临时开关
-        private static bool ManualSlideOverride = false;
+        // Slide 的 NoteCheck 调用期间禁用 autoplay 的计数器（支持嵌套/多次进入）
+        private static int ManualSlideOverrideDepth = 0;
 
         [HarmonyPrefix]
         [HarmonyPatch(typeof(GameManager), "IsAutoPlay")]
         public static bool SetIsAutoPlay(ref bool __result)
         {
-            // Slide NoteCheck 期间强制视为非自动，其他情况使用原有 IsAutoPlay()
-            __result = ManualSlideOverride ? false : IsAutoPlay();
+            // 在 Slide 的 NoteCheck 期间，视为未开启 autoplay；其他情况维持你的原逻辑
+            __result = ManualSlideOverrideDepth > 0 ? false : IsAutoPlay();
             return false;
+        }
+
+        // 进入 SlideRoot 的 NoteCheck 前，开启临时关闭 autoplay
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(SlideRoot), "NoteCheck")]
+        public static void SlideRootNoteCheck_OverrideBegin()
+        {
+            ManualSlideOverrideDepth++;
+        }
+
+        // 退出 SlideRoot 的 NoteCheck 后，恢复 autoplay
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(SlideRoot), "NoteCheck")]
+        public static void SlideRootNoteCheck_OverrideEnd()
+        {
+            ManualSlideOverrideDepth--;
+            if (ManualSlideOverrideDepth < 0) ManualSlideOverrideDepth = 0;
+        }
+
+        // 若谱面使用了 SlideFan（风车等变体），同样在其 NoteCheck 期间关闭 autoplay
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(SlideFan), "NoteCheck")]
+        public static void SlideFanNoteCheck_OverrideBegin()
+        {
+            ManualSlideOverrideDepth++;
+        }
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(SlideFan), "NoteCheck")]
+        public static void SlideFanNoteCheck_OverrideEnd()
+        {
+            ManualSlideOverrideDepth--;
+            if (ManualSlideOverrideDepth < 0) ManualSlideOverrideDepth = 0;
         }
 
         [HarmonyPostfix]
@@ -319,21 +352,6 @@ namespace SinmaiAssist.Cheat
 
             // 继续执行原方法：它会立即调用 Judge()
             return true;
-        }
-        // 进入 Slide 的 NoteCheck 之前，开启临时开关
-        [HarmonyPrefix]
-        [HarmonyPatch(typeof(SlideRoot), "NoteCheck")]
-        public static void SlideRootNoteCheck_OverrideBegin()
-        {
-            ManualSlideOverride = true;
-        }
-
-        // 退出 Slide 的 NoteCheck 之后，关闭临时开关
-        [HarmonyPostfix]
-        [HarmonyPatch(typeof(SlideRoot), "NoteCheck")]
-        public static void SlideRootNoteCheck_OverrideEnd()
-        {
-            ManualSlideOverride = false;
         }
     }
 }
