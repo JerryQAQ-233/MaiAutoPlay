@@ -56,11 +56,15 @@ namespace SinmaiAssist.Cheat
             return autoPlayMode != AutoPlayMode.None;
         }
 
+        // 在 Slide 的 NoteCheck 期间禁用 autoplay 的临时开关
+        private static bool ManualSlideOverride = false;
+
         [HarmonyPrefix]
         [HarmonyPatch(typeof(GameManager), "IsAutoPlay")]
         public static bool SetIsAutoPlay(ref bool __result)
         {
-            __result = IsAutoPlay();
+            // Slide NoteCheck 期间强制视为非自动，其他情况使用原有 IsAutoPlay()
+            __result = ManualSlideOverride ? false : IsAutoPlay();
             return false;
         }
 
@@ -292,24 +296,44 @@ namespace SinmaiAssist.Cheat
             return false;
         }
 
-        [HarmonyPostfix]
-        [HarmonyPatch(typeof(TouchNoteB), "NoteCheck")]
-        public static void NoteCheck(TouchNoteB __instance)
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(SlideRoot), "NoteCheck")]
+        public static bool SlideRootNoteCheckNoSlide(SlideRoot __instance)
         {
-            if (!IsAutoPlay()) return;
-            var judgeResultField = AccessTools.Field(typeof(NoteBase), "JudgeResult");
-            var playJudgeSeMethod = AccessTools.Method(typeof(TouchNoteB), "PlayJudgeSe");
-            float appearMsec = (float)AccessTools.Field(typeof(NoteBase), "AppearMsec").GetValue(__instance);
-            if ((autoPlayMode == AutoPlayMode.RandomAllPerfect ||
-                autoPlayMode == AutoPlayMode.RandomFullComboPlus ||
-                autoPlayMode == AutoPlayMode.RandomFullCombo) &&
-                NotesManager.GetCurrentMsec() > appearMsec - 4.1666665f &&
-                IsAutoPlay())
+            // 非 autoplay：走原始逻辑
+            if (!IsAutoPlay()) return true;
+
+            // 到达判定窗口才处理
+            var isStartIgnoreWaitMethod = AccessTools.Method(typeof(SlideRoot), "IsNoteCheckTimeStartIgnoreJudgeWait");
+            bool canCheck = (bool)isStartIgnoreWaitMethod.Invoke(__instance, null);
+            if (!canCheck) return true;
+
+            // 将滑动命中索引直接标记为完成，跳过“推进/箭头消隐/滑动SE”
+            var hitAreaListField = AccessTools.Field(typeof(SlideRoot), "_hitAreaList");
+            var hitIndexField = AccessTools.Field(typeof(SlideRoot), "_hitIndex");
+            var hitAreaList = hitAreaListField.GetValue(__instance) as System.Collections.IList;
+            if (hitAreaList != null)
             {
-                judgeResultField.SetValue(__instance, NoteJudge.ETiming.Critical);
-                playJudgeSeMethod.Invoke(__instance, null);
+                hitIndexField.SetValue(__instance, hitAreaList.Count);
             }
+
+            // 继续执行原方法：它会立即调用 Judge()
+            return true;
+        }
+        // 进入 Slide 的 NoteCheck 之前，开启临时开关
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(SlideRoot), "NoteCheck")]
+        public static void SlideRootNoteCheck_OverrideBegin()
+        {
+            ManualSlideOverride = true;
+        }
+
+        // 退出 Slide 的 NoteCheck 之后，关闭临时开关
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(SlideRoot), "NoteCheck")]
+        public static void SlideRootNoteCheck_OverrideEnd()
+        {
+            ManualSlideOverride = false;
         }
     }
 }
-
